@@ -1,0 +1,37 @@
+services:
+  master:
+    build: .
+    command: uvicorn dnslab.master_app:app --host 0.0.0.0 --port 8000
+    environment:
+      MASTER_DB: /data/master.db
+    volumes:
+      - master-data:/data
+    ports:
+      - "8000:8000"   # HTTP API + /docs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/zone/serial', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 5s
+
+  slave:
+    build: .
+    command: uvicorn dnslab.slave_app:app --host 0.0.0.0 --port 8000
+    environment:
+      SLAVE_DB: /data/slave.db
+      MASTER_URL: http://master:8000
+      DNS_PORT: "5353"
+      SYNC_INTERVAL: "0"   # 0 = sync only via POST /sync (e.g. from /docs)
+    volumes:
+      - slave-data:/data   # persists the last good version across restarts
+    ports:
+      - "8001:8000"        # HTTP API + /docs
+      - "5353:5353/udp"    # DNS
+    depends_on:
+      master:
+        condition: service_healthy
+
+volumes:
+  master-data:
+  slave-data:
